@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wheelchair NYC — the map</title>
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<link rel="stylesheet" href="/static/base.css">
+<link rel="stylesheet" href="/static/map.css">
+</head>
+<body>
+<a class="skip" href="#q">Skip to the question box</a>
+<div class="app">
+  <aside class="panel" aria-label="Controls and results">
+    <header class="panel-head">
+      <a class="brand" href="/" aria-label="Wheelchair NYC, home"><span>Wheelchair <b>NYC</b></span></a>
+      <div class="prefs" role="group" aria-label="Display settings">
+        <button type="button" class="pill-btn sm" id="btn-text" aria-pressed="false">A+</button>
+        <button type="button" class="pill-btn sm" id="btn-theme" aria-pressed="false">Dark</button>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="t-ask" aria-controls="p-ask" aria-selected="true">Ask</button>
+      <button role="tab" id="t-results" aria-controls="p-results" aria-selected="false" tabindex="-1">Results</button>
+      <button role="tab" id="t-trip" aria-controls="p-trip" aria-selected="false" tabindex="-1">Trip</button>
+      <button role="tab" id="t-layers" aria-controls="p-layers" aria-selected="false" tabindex="-1">Layers</button>
+      <button role="tab" id="t-about" aria-controls="p-about" aria-selected="false" tabindex="-1">About</button>
+    </div>
+
+    <p id="status" class="vh" role="status" aria-live="polite"></p>
+
+    <section role="tabpanel" id="p-ask" aria-labelledby="t-ask" class="pane">
+      <form id="ask-form" autocomplete="off">
+        <label for="q" class="lbl">Describe your situation</label>
+        <textarea id="q" rows="3" maxlength="1000" required aria-describedby="q-tip" data-example="I use a wheelchair, my budget is $3,500, I work at 350 5th Ave, Manhattan" placeholder="I use a wheelchair, my budget is $3,500, I work at 350 5th Ave, Manhattan"></textarea>
+        <p class="tip" id="q-tip">Empty box? Press <kbd>Enter</kbd> to use the example, <kbd>Enter</kbd> again to send. <button type="button" class="ex" data-fill="q">Use example</button></p>
+        <button type="submit" id="go" class="go"><span>Find my neighbourhoods</span></button>
+        <div class="chips" role="group" aria-label="Examples">
+          <button type="button" class="chip" data-q="I use a wheelchair, my budget is $3,500, I work at 350 5th Ave, Manhattan">Midtown · $3,500</button>
+          <button type="button" class="chip" data-q="I use a power wheelchair, I can pay up to $3,000 a month, and I work in Downtown Brooklyn">Downtown Brooklyn · $3,000</button>
+          <button type="button" class="chip" data-q="Wheelchair user, budget $2,800 per month, I work at Bronx Hub">Bronx Hub · $2,800</button>
+        </div>
+      </form>
+      <p id="mode-note" class="note" hidden></p>
+      <div id="answer-wrap" hidden>
+        <div id="understood" class="understood"></div>
+        <ol id="mini-top" class="mini-top" aria-label="Top three neighbourhoods"></ol>
+        <h2 class="h">What the AI says</h2>
+        <div id="answer-text" class="answer-text"></div>
+        <p id="answer-by" class="small"></p>
+        <details id="trace-wrap" class="fold"><summary><span id="trace-title">What it did</span></summary><ol id="trace" class="trace"></ol></details>
+      </div>
+      <p id="ask-hint" class="hint">Or just explore: pan the map, click any neighbourhood, or switch what the colours mean under <b>Layers</b>.</p>
+    </section>
+
+    <section role="tabpanel" id="p-results" aria-labelledby="t-results" class="pane" hidden>
+      <p id="results-empty" class="hint">Ask a question first — the ranked neighbourhoods appear here and on the map.</p>
+      <div id="results-body" hidden>
+        <div class="dial">
+          <label for="budget">Budget <output id="dial-out" for="budget" class="mono">$3,500</output></label>
+          <input type="range" id="budget" min="1500" max="8000" step="50" value="3500">
+          <p id="filter-line" class="small"></p>
+        </div>
+        <button type="button" id="deserts" role="switch" aria-checked="false" class="switch"><span class="track" aria-hidden="true"></span><span>Show accessibility deserts instead</span></button>
+        <div id="ranked-wrap">
+          <h2 class="h" id="h-top">Top three</h2>
+          <ol id="top3" class="cards"></ol>
+          <h2 class="h" id="h-all">Every neighbourhood that qualifies</h2>
+          <label class="inline">Sort by <select id="sort">
+            <option value="rank">Score</option><option value="rent">Lowest rent</option><option value="uptime">Elevator uptime</option>
+            <option value="fare">Cheapest plan-B ride</option><option value="dist">Closest to work</option></select></label>
+          <div class="tscroll" tabindex="0" role="region" aria-labelledby="h-all"><table id="ranked" class="tbl"></table></div>
+        </div>
+        <div id="deserts-wrap" hidden>
+          <h2 class="h" id="h-des">Accessibility deserts</h2>
+          <p id="deserts-line" class="small"></p>
+          <div class="tscroll" tabindex="0" role="region" aria-labelledby="h-des"><table id="deserts-table" class="tbl"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="p-trip" aria-labelledby="t-trip" class="pane" hidden>
+      <form id="trip-form" autocomplete="off">
+        <label class="lbl" for="trip-from">From</label>
+        <input id="trip-from" type="text" required aria-describedby="trip-tip" data-example="Co-Op City, Bronx" placeholder="Co-Op City, Bronx">
+        <label class="lbl" for="trip-to">To</label>
+        <input id="trip-to" type="text" required aria-describedby="trip-tip" data-example="350 5th Ave, Manhattan" placeholder="350 5th Ave, Manhattan">
+        <p class="tip" id="trip-tip">Press <kbd>Enter</kbd> in an empty field to use its example. <button type="button" class="ex" data-fill="trip-from trip-to">Use both examples</button></p>
+        <div>
+          <label class="lbl" for="trip-when">When</label><select id="trip-when"></select>
+        </div>
+        <fieldset class="rowset"><legend class="lbl">How you get around</legend>
+          <label class="radio"><input type="radio" name="chair" value="manual" checked> Manual wheelchair</label>
+          <label class="radio"><input type="radio" name="chair" value="power"> Power wheelchair</label>
+          <label class="radio"><input type="radio" name="chair" value="walker"> Cane or walker</label></fieldset>
+        <fieldset class="rowset"><legend class="lbl">Put first</legend>
+          <label class="radio"><input type="radio" name="opt" value="time" checked> Fastest</label>
+          <label class="radio"><input type="radio" name="opt" value="cost"> Cheapest</label>
+          <label class="radio"><input type="radio" name="opt" value="effort"> Least effort</label></fieldset>
+        <button type="submit" class="go" id="trip-go"><span>Check this trip</span></button>
+      </form>
+      <div id="trip-out"></div>
+    </section>
+
+    <section role="tabpanel" id="p-layers" aria-labelledby="t-layers" class="pane" hidden>
+      <fieldset><legend class="h">Colour the neighbourhoods by</legend><div id="layer-list" class="layer-list"></div></fieldset>
+      <fieldset><legend class="h">Show on the map</legend>
+        <label class="check"><input type="checkbox" id="ov-stations" checked> Accessible subway stations</label>
+        <label class="check"><input type="checkbox" id="ov-outages" checked> Elevators out right now</label>
+        <label class="check"><input type="checkbox" id="ov-upgrades"> Stations due to become accessible</label>
+      </fieldset>
+      <fieldset><legend class="h">Look</legend>
+        <button type="button" id="sw-3d" role="switch" aria-checked="false" class="switch"><span class="track" aria-hidden="true"></span><span>3D buildings: tilt the map and show real building heights</span></button>
+        <button type="button" id="sw-a11y" role="switch" aria-checked="false" class="switch"><span class="track" aria-hidden="true"></span><span>Accessible colours: colour-blind-safe palette, patterns and numbers</span></button>
+        <button type="button" id="sw-crime" role="switch" aria-checked="false" class="switch"><span class="track" aria-hidden="true"></span><span>Add reported crime as a layer</span></button>
+        <p class="small" id="crime-note" hidden>Reported felonies per km², 2026 to date. This measures reporting and policing as much as safety, tracks income and race, and is never part of the score.</p>
+      </fieldset>
+    </section>
+
+    <section role="tabpanel" id="p-about" aria-labelledby="t-about" class="pane" hidden>
+      <h2 class="h">What this is</h2>
+      <p>A wheelchair user describes their budget and workplace. An AI model (Claude) plans the analysis over public datasets, checks its own joins with SQL, draws the map, looks at it, and explains its top three. Everything else here is for exploring and checking that answer.</p>
+      <details class="fold"><summary>The score and what each part is worth</summary><div id="weights"></div></details>
+      <details class="fold"><summary>Queries that were run <span id="sql-count"></span></summary><div id="sqls"></div></details>
+      <details class="fold"><summary>Data checks <span id="check-count"></span></summary><div id="checks"></div></details>
+      <details class="fold"><summary>The map image the model looked at</summary><div id="png"><p class="small">Appears after a question.</p></div></details>
+      <details class="fold"><summary>Proxies, not guarantees</summary><ul class="bul">
+        <li><b>Rent</b> is Zillow’s typical market rent for the area (Oct 2026), not the rent of an accessible apartment.</li>
+        <li><b>Housing</b> figures are proxies: post-1991 buildings fall under Fair Housing Act design rules; elevator buildings can be step-free. Neither confirms an accessible unit is available.</li>
+        <li><b>One-seat ride</b> means an accessible station near home and one near work share a line.</li>
+        <li><b>Trip check</b> uses the subway timetable through accessible stations only, and real Uber/Lyft trips for the chosen time of day. Wheeling speed, a 1.3 detour factor and 3 minutes per elevator are assumptions. Buses, platform gaps and slopes are not modelled.</li>
+        <li><b>Ride-hail</b> numbers come from completed trips only (Sept 2026). Requests that never found a car are not in the data.</li>
+        <li><b>Elevator outages</b> are a snapshot of the MTA feed taken <span id="feed-time"></span>. Forecast dates for new accessible stations are the MTA’s and have slipped before.</li>
+        <li><b>Hilliness</b> is the elevation range across a few homes per zone — a rough proxy, not street slope.</li>
+      </ul></details>
+      <details class="fold"><summary>Data sources</summary><ul class="bul">
+        <li>NYC TLC — High-Volume For-Hire Vehicle trips, Sept 2026; taxi zones</li>
+        <li>MTA — stations (ADA), elevator availability Apr–Oct 2026, live elevator status, subway timetable (GTFS), capital projects, bus stops</li>
+        <li>NYC City Planning — PLUTO · Zillow — ZORI rents · NYC DOT — pedestrian ramps</li>
+        <li>NYC HPD — elevator complaints, Housing Connect lotteries · NYPD — complaints and crashes</li>
+        <li>CDC PLACES · NYS Health facilities · NYC public restrooms · Open-Meteo elevation</li>
+        <li>Map: © OpenStreetMap contributors, OpenFreeMap, MapLibre · Address lookup: Nominatim</li>
+      </ul></details>
+      <p class="small"><a href="/classic">Open the full report view</a> — the same results as one long, printable page with the complete table.</p>
+    </section>
+  </aside>
+
+  <main class="stage">
+    <div id="map" role="application" aria-label="Map of New York City. Arrow keys pan, plus and minus zoom. Every result shown here is also listed in the Results tab."></div>
+    <div class="quick" role="group" aria-label="Quick map switches">
+      <button type="button" class="qbtn" id="q-3d" aria-pressed="false">3D buildings</button>
+      <button type="button" class="qbtn" id="q-a11y" aria-pressed="false">Accessible colours</button>
+      <button type="button" class="qbtn" id="q-fit">Whole city</button>
+    </div>
+    <section class="legend" id="legend" aria-label="Map legend">
+      <h2><button type="button" id="legend-toggle" aria-expanded="true" aria-controls="legend-body">What the map shows <span>Hide</span></button></h2>
+      <div id="legend-body"></div>
+    </section>
+    <section class="zonecard" id="zonecard" aria-live="polite" aria-label="Selected neighbourhood" hidden></section>
+  </main>
+</div>
+<script src="/static/vendor/maplibre-gl.js"></script>
+<script src="/static/map.js" defer></script>
+</body>
+</html>

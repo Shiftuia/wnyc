@@ -1,0 +1,10 @@
+# everything under data/ is downloaded or built by run.sh
+data/
+.venv/
+stable/
+stable.prev/
+.env
+fetch.log
+__pycache__/
+*.pyc
+.DS_Store

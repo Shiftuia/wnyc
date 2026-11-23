@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wheelchair NYC — same rent, different city</title>
+<meta name="description" content="A map that shows a wheelchair user where in New York City they could really live: rent, accessible subway stations, how often the elevators work, and how to get to work.">
+<link rel="stylesheet" href="/static/base.css">
+<style>
+  body { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+  header, main, footer { width: 100%; max-width: 1240px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 44px); }
+  header { display: flex; justify-content: space-between; align-items: center; padding-block: 14px; gap: 12px; flex-wrap: wrap; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 64px); align-items: center; padding-block: clamp(16px, 4vh, 48px); }
+  h1 { font-size: clamp(3rem, 8vw, 6.6rem); line-height: .9; font-weight: 800; letter-spacing: -.04em; }
+  h1 em { font-style: normal; background: linear-gradient(transparent 56%, var(--sun) 56% 92%, transparent 92%); }
+  .lede { margin-top: 22px; font-size: clamp(1.15rem, 1.7vw, 1.4rem); line-height: 1.4; max-width: 30em; }
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; }
+  .pair { display: grid; gap: 14px; }
+  .pair h2 { font-size: 1.05rem; font-weight: 800; }
+  .listing { border: var(--bw) solid var(--rule); border-radius: var(--r); background: var(--card); padding: 16px 20px; box-shadow: var(--shadow); }
+  .listing.bad { border-style: dashed; box-shadow: none; }
+  .listing h3 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.02em; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .listing h3 span { font: 800 1.45rem "AHL Mono", monospace; letter-spacing: -.04em; }
+  .listing p { margin-top: 6px; }
+  .verdict { display: inline-block; margin-top: 10px; padding: 2px 12px; font-weight: 800; border-radius: 8px; border: 2.5px solid #14110f; background: var(--sun); color: var(--sun-ink); }
+  .bad .verdict { background: var(--ink); color: var(--paper); border-color: var(--rule); }
+  .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); border: var(--bw) solid var(--rule); border-radius: var(--r); background: var(--card); overflow: hidden; }
+  .stats li { padding: 16px 22px; border-right: var(--bw) solid var(--rule); }
+  .stats li:last-child { border-right: 0; }
+  .stats b { display: block; font: 800 clamp(2rem, 4vw, 3.2rem)/1 "AHL Mono", monospace; letter-spacing: -.05em; }
+  .stats span { display: block; margin-top: 6px; line-height: 1.3; }
+  .does { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .does li { border-top: 6px solid var(--ink); padding-top: 10px; }
+  .does h3 { font-size: 1.1rem; font-weight: 800; }
+  footer { padding-block: 14px 22px; color: var(--ink-2); font-size: .9rem; }
+  @media (max-width: 860px) { main, .stats, .does { grid-template-columns: 1fr; } .stats li { border-right: 0; border-bottom: var(--bw) solid var(--rule); } .stats li:last-child { border-bottom: 0; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#open">Skip to the map</a>
+<header>
+  <a class="brand" href="/"><span>Wheelchair <b>NYC</b></span></a>
+  <nav aria-label="Pages"><a class="pill-btn" href="/map">Map</a><a class="pill-btn" href="/classic">Full report view</a></nav>
+</header>
+<main>
+  <div>
+    <h1>Same rent. <em>Different city.</em></h1>
+    <p class="lede" id="lede">An apartment listing shows the price. It does not show whether a wheelchair user can get out of the neighbourhood. This map does.</p>
+    <p class="cta-row"><a class="cta" id="open" href="/map">Open the map
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M4 12h15M13 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <a class="cta ghost" href="/map?q=I%20use%20a%20wheelchair%2C%20my%20budget%20is%20%243%2C500%2C%20I%20work%20at%20350%205th%20Ave%2C%20Manhattan">Watch it answer a question</a></p>
+  </div>
+  <section class="pair" id="pair" aria-label="Example: two neighbourhoods with the same rent"></section>
+  <ul class="stats" id="stats" aria-label="The problem in three numbers"></ul>
+  <ol class="does" aria-label="What you can do">
+    <li><h3>Ask in your own words</h3><p>“I use a wheelchair, $3,500, I work at 350 5th Ave.” An AI model analyses the city for you and explains its top three.</p></li>
+    <li><h3>Play with the map</h3><p>Drag the budget, tilt into 3D, switch layers: broken elevators, bus stops, hills, housing lotteries.</p></li>
+    <li><h3>Check a real trip</h3><p>A to B by accessible subway, accessible Uber/Lyft, or wheels — time, cost, and whether you can do it alone.</p></li>
+  </ol>
+</main>
+<footer>Built on open data from NYC, the MTA, the TLC, Zillow and the CDC. Figures are proxies, not guarantees — details inside.</footer>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = n => "$" + Math.round(n).toLocaleString("en-US");
+const prefs = JSON.parse(localStorage.getItem("wnyc-prefs") || "{}");
+if (prefs.theme === "ink") document.documentElement.dataset.theme = "ink";
+fetch("/api/landing").then(r => r.json()).then(L => {
+  const c = L.city, w = L.waits, p = L.pair;
+  document.getElementById("lede").innerHTML = `An apartment listing shows the price. It does not show whether you can get out of the neighbourhood. For the <b>${L.ambulatory.n.toLocaleString("en-US")} New Yorkers</b> who have serious difficulty walking or climbing stairs, that is the whole question. This map answers it.`;
+  document.getElementById("stats").innerHTML = [
+    [`1 in ${Math.round(c.stations / c.ada_full)}`, `subway stations is fully accessible (${c.ada_full} of ${c.stations})`],
+    [`${Math.round(c.worst_uptime * 100)}%`, `of the time the elevators at ${c.worst_station} worked, Apr–Oct 2026`],
+    [`+${Math.round((w.wav_wait_median_min / w.other_wait_median_min - 1) * 100)}%`, `longer wait for a wheelchair-accessible Uber or Lyft`],
+  ].map(([n, t]) => `<li><b>${esc(n)}</b><span>${esc(t)}</span></li>`).join("");
+  if (p) document.getElementById("pair").innerHTML = `<h2>Two neighbourhoods in ${p.borough === "Bronx" ? "the Bronx" : esc(p.borough)}. On a listings site they look the same.</h2>
+    <article class="listing"><h3>${esc(p.a_name)} <span>${money(p.a_rent)}</span></h3><p>${p.a_n} accessible subway stations in reach. Their elevators worked ${(100 * p.a_uptime).toFixed(0)}% of the time.</p><p class="verdict">On the map</p></article>
+    <article class="listing bad"><h3>${esc(p.b_name)} <span>${money(p.b_rent)}</span></h3><p>No accessible subway station. An accessible Uber takes ${p.b_wav.toFixed(0)} minutes to arrive — 1 time in 10, over ${p.b_wav_p90.toFixed(0)}.</p><p class="verdict">Off the map</p></article>`;
+});
+</script>
+</body>
+</html>

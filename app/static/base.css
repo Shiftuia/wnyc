@@ -1,0 +1,37 @@
+/* Shared tokens and primitives for the landing page and the map app. */
+@font-face { font-family: "AHL"; src: url("/static/fonts/ahl-next.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "AHL Mono"; src: url("/static/fonts/ahl-mono.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+:root {
+  --paper: #f6f1e7; --card: #fffdf8; --ink: #14110f; --ink-2: #4a443c; --rule: #14110f; --soft: #ebe4d4;
+  --sun: #ffd400; --sun-ink: #14110f; --good: #0b6e4f; --warn: #8a5a00; --bad: #a3211a; --link: #0b3d91;
+  --shadow: 5px 5px 0 var(--ink); --bw: 3px; --r: 14px; --fs: 1rem; color-scheme: light;
+}
+[data-theme="ink"] {
+  --paper: #12100e; --card: #1d1a16; --ink: #f6f1e7; --ink-2: #cfc7b8; --rule: #f6f1e7; --soft: #2a2620;
+  --good: #6fd6ad; --warn: #ffc857; --bad: #ff9d94; --link: #a9c7ff; --shadow: 5px 5px 0 #000; color-scheme: dark;
+}
+[data-text="large"] { --fs: 1.18rem; }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--fs)/1.5 "AHL", system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--link); }
+b, strong { font-weight: 800; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+:focus-visible { outline: 4px solid var(--sun); outline-offset: 2px; box-shadow: 0 0 0 2px var(--ink), 0 0 0 8px var(--ink); border-radius: 6px; }
+.skip { position: absolute; left: 12px; top: -80px; z-index: 100; background: var(--sun); color: var(--sun-ink); padding: 12px 18px; font-weight: 800; border: var(--bw) solid #14110f; border-radius: 10px; }
+.skip:focus { top: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; text-decoration: none; color: var(--ink); }
+.brand b { background: var(--sun); color: var(--sun-ink); padding: 0 .3em; border-radius: 6px; }
+.pill-btn { min-height: 44px; padding: 8px 14px; background: transparent; border: 2px solid var(--rule); border-radius: 999px; font-weight: 700; text-decoration: none; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+.pill-btn:hover, .pill-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.cta { display: inline-flex; align-items: center; gap: 12px; min-height: 58px; padding: 12px 26px; background: var(--sun); color: var(--sun-ink); border: var(--bw) solid #14110f; border-radius: 14px; box-shadow: var(--shadow); font-weight: 800; font-size: 1.15rem; text-decoration: none; }
+.cta.ghost { background: var(--card); color: var(--ink); border-color: var(--rule); }
+.cta:hover { transform: translate(2px, 2px); box-shadow: 3px 3px 0 var(--ink); }
+.mono { font-family: "AHL Mono", ui-monospace, monospace; }
+.rt { display: inline-grid; place-items: center; min-width: 1.55em; height: 1.55em; padding: 0 .2em; border-radius: 999px; font-weight: 800; font-size: .8em; color: #fff; vertical-align: middle; margin-right: 2px; border: 1.5px solid #14110f; }
+.nodata { color: var(--ink-2); font-style: italic; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

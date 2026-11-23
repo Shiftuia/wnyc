@@ -1,0 +1,7 @@
+anthropic==2.12.0
+certifi==2026.11.20
+duckdb==2.0.1
+fastapi==0.165.0
+matplotlib==3.11.2
+pydantic==2.14.4
+uvicorn==0.54.0
