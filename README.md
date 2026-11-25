@@ -30,7 +30,9 @@ You type one sentence — *"I use a wheelchair, my budget is $3,500, I work at 3
 
 ## What the model does
 
-The answer is written by `claude-fable-5-2` working as an analyst with five tools:
+The answer is written by Claude working as an analyst with five tools. The default model is `claude-haiku-5-5`
+(fast and cheap enough for a public demo); set `WNYC_MODEL=claude-fable-5-2` for the model the app was built with,
+which runs more of its own checks:
 
 1. `geocode` — finds the workplace.
 2. `score_zones` — ranks all 263 taxi zones with a documented, deterministic 0–100 score.
@@ -54,7 +56,9 @@ Needs Python 3.11+ and about 1 GB of disk. The first run downloads the public da
 of TLC trips), saves the NYC street map for offline use, and builds a local DuckDB file. No data is stored in this
 repository.
 
-Pages: `/` landing · `/map` the app · `/classic` a long-form report view with the complete table.
+Pages: `/` landing · `/map` the app.
+
+To put it on your own server (Docker Compose with HTTPS, or systemd), see [DEPLOY.md](DEPLOY.md).
 
 ## Data
 
@@ -99,7 +103,7 @@ app/engine.py                       scoring, geocoding, read-only SQL, PNG map
 app/router.py                       A → B trip check (accessible-station subway graph + ride-hail)
 app/agent.py                        the Claude tool loop, with a rule-based fallback
 app/server.py                       FastAPI: pages, API, offline street-map tiles
-app/static/                         landing page, map app, classic view (no framework)
+app/static/                         landing page and map app (no framework)
 scripts/                            dataset and basemap downloads
 research/, MAIN_PROMPT.md           the original brief and research notes for the build
 PROGRESS.md                         status, decisions and where the data disagreed with the notes

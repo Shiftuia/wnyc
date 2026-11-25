@@ -1,6 +1,6 @@
 """Step 2 — the agent.
 
-Claude (claude-fable-5-2, effort medium) parses the free-text question, geocodes the workplace, scores the
+Claude (claude-haiku-5-5 by default, set WNYC_MODEL to change; effort medium) parses the free-text question, geocodes the workplace, scores the
 zones, runs its own verification SQL, renders the map and LOOKS at the PNG to check it agrees with the top-3.
 
 `run(question)` is a generator of UI events. Without an API credential it falls back to a rule-based
@@ -20,8 +20,10 @@ from typing import Iterator
 import engine
 import router
 
-MODEL = "claude-fable-5-2"
-EFFORT = "medium"
+MODEL = os.environ.get("WNYC_MODEL", "claude-haiku-5-5")   # e.g. WNYC_MODEL=claude-fable-5-2
+EFFORT = os.environ.get("WNYC_EFFORT", "medium")
+# server-side refusal fallback exists for Fable / Opus 5.x / Sonnet 5.5, not for Haiku
+_FALLBACK = {} if "haiku" in MODEL else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
 MAX_TURNS = 12
 CACHE_DIR = engine.DATA / "cache"
 MAPS: dict[str, bytes] = {}  # map id → PNG bytes (served by the web server)
@@ -206,8 +208,7 @@ def _run_fable(question: str) -> Iterator[dict]:
                 system=SYSTEM,
                 tools=TOOLS,                               # tool_choice stays "auto" (forced tool use → 400)
                 output_config={"effort": EFFORT},          # no `thinking` param: adaptive thinking is always on
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",                       # a safety-classifier decline is retried on a fallback model
+                **_FALLBACK,                               # a safety-classifier decline is retried on a fallback model
                 messages=messages,
             ) as stream:
                 for text in stream.text_stream:
@@ -365,11 +366,23 @@ def _run_offline(question: str, reason: str) -> Iterator[dict]:
 
 
 # ------------------------------------------------------------------- entrypoint
+def _cache_file(question: str) -> Path:
+    question = question.strip()[:1000]
+    norm = re.sub(r"\s+", " ", question.lower())
+    if MODEL != "claude-fable-5-2":  # keep existing Fable cache keys; other models get their own
+        norm += f"|{MODEL}"
+    key = hashlib.sha1(norm.encode()).hexdigest()[:16]
+    return CACHE_DIR / f"run_{key}.json"
+
+
+def is_cached(question: str) -> bool:
+    return _cache_file(question).exists()
+
+
 def run(question: str, fresh: bool = False) -> Iterator[dict]:
     t0 = time.time()
     question = question.strip()[:1000]
-    key = hashlib.sha1(re.sub(r"\s+", " ", question.lower()).encode()).hexdigest()[:16]
-    cache_file = CACHE_DIR / f"run_{key}.json"
+    cache_file = _cache_file(question)
     live = has_credentials()
 
     if live and not fresh and cache_file.exists():

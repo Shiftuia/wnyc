@@ -15,12 +15,11 @@
 3. **Trip check** — `app/router.py`: A → B by wheels, accessible subway (timetable graph, accessible stations only),
    accessible Uber/Lyft (real trips for the chosen time of day), or a mix; minutes, cost, effort, "alone / with a
    risk / help likely", live elevator outages. Profiles: manual chair, power chair, cane or walker.
-4. **UI** — three pages, hand-written, no framework:
+4. **UI** — two pages, hand-written, no framework:
    - `/` short landing (hook, the same-rent pair, three numbers, one button);
    - `/map` the app: full-screen street map (MapLibre + OpenFreeMap, keyless) with a side panel — Ask, Results,
      Trip, Layers, About. Standard colours by default; "Accessible colours" switches to a colour-blind-safe palette
      with patterns and numbers. 3D tilt, budget dial, deserts switch, layer picker, crime as an opt-in layer.
-   - `/classic` the first long-form page, kept for reference (complete wide table, printable).
 5. **Rehearsed** — "…$3,500, I work at 350 5th Ave, Manhattan": Madison, Sheepshead Bay, Coney Island (same on
    repeat). Ranking shows ~3 s after submit; the written answer takes 27–75 s live (longer when the model also
    checks the trip), instant when replayed from cache.
@@ -29,7 +28,7 @@
 `./run.sh` → http://127.0.0.1:8765  (`ANTHROPIC_API_KEY` in the environment or `.env` enables the model path).
 A frozen copy for demos can be served from `stable/` with `PORT=8766 .venv/bin/python stable/app/server.py`.
 Deep links: `/map?q=<question>` plus `&layer=elev|bus|hill|…`, `&view=deserts`, `&3d=1`, `&a11y=1`, `&zone=<id>`,
-`&trip=<from>|<to>`. Optional `GOOGLE_MAPS_API_KEY` is only used by `/classic` for an embedded Street View.
+`&trip=<from>|<to>`.
 
 ## Where the data disagreed with research/*.md
 - `data/ramps.csv` from fetch.sh was truncated (147,776 of 217,679 rows). Re-fetched in two pages → `ramps_0.csv`,

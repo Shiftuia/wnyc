@@ -1,0 +1,38 @@
+# docker compose up -d --build     → https://$DOMAIN  (first start builds the data: watch `docker compose logs -f app`)
+# Needs a .env next to this file with ANTHROPIC_API_KEY=... and DOMAIN=your.domain (see DEPLOY.md).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      WNYC_MODEL: ${WNYC_MODEL:-claude-haiku-5-5}
+      WNYC_EFFORT: ${WNYC_EFFORT:-medium}
+      WNYC_ASK_PER_IP_HOUR: ${WNYC_ASK_PER_IP_HOUR:-20}
+      WNYC_ASK_PER_DAY: ${WNYC_ASK_PER_DAY:-2000}
+      # the app port is not published: only caddy can reach it, so trust its X-Forwarded-For for rate limits
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - wnyc-data:/app/data
+    expose:
+      - "8765"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  wnyc-data:
+  caddy-data:
+  caddy-config:

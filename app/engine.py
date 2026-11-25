@@ -76,6 +76,10 @@ def con() -> duckdb.DuckDBPyConnection:
                 raise RuntimeError("data/prepared.duckdb is missing — run: .venv/bin/python app/build_data.py")
             _con = duckdb.connect(str(DB_PATH), read_only=True)
             _con.execute("LOAD spatial")
+            # the model writes its own SQL (run_sql) and the question comes from the public: no file or network
+            # access beyond the already-open database, and the setting cannot be switched back on
+            _con.execute("SET enable_external_access = false")
+            _con.execute("SET lock_configuration = true")
         return _con.cursor()
 
 

@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -51,11 +54,6 @@ def map_app():        # the map-centric app
     return _page("map.html")
 
 
-@app.get("/classic")
-def classic():        # the first, long-form single page (kept for reference and reuse)
-    return _page("classic.html")
-
-
 @app.get("/api/bootstrap")
 def bootstrap():
     """Static layers: zone shapes, accessible stations, data checks, hubs, mode."""
@@ -66,7 +64,6 @@ def bootstrap():
         "hubs": [h["name"] for h in engine.HUBS],
         "weights": engine.WEIGHTS,
         "live": agent.has_credentials(),
-        "gmaps_key": os.environ.get("GOOGLE_MAPS_API_KEY") or None,   # optional: enables the embedded Street View
         "landing": landing(),
         "zone_info": engine.q("""SELECT f.zone_id, f.zone_name, f.borough, f.rent_zori, f.mf_units, f.ada_stations_800m, f.ada_station_names,
                                         f.ada_elevator_uptime, f.units_near_ada_share, f.elevator_units_share, f.fha_units_share,
@@ -130,9 +127,44 @@ def landing() -> dict:
     }
 
 
+# Limits on questions answered by the model (public demo on someone's API key). Cached answers and the
+# map / trip / score endpoints are not limited. Behind a reverse proxy on the same host, uvicorn takes the client
+# address from X-Forwarded-For (FORWARDED_ALLOW_IPS defaults to 127.0.0.1).
+PER_IP_HOUR = int(os.environ.get("WNYC_ASK_PER_IP_HOUR", "20"))
+PER_DAY = int(os.environ.get("WNYC_ASK_PER_DAY", "2000"))
+_hits: dict[str, deque] = defaultdict(deque)
+_day = {"date": "", "n": 0}
+_lim_lock = threading.Lock()
+
+
+def _over_limit(ip: str) -> str | None:
+    now = time.time()
+    with _lim_lock:
+        today = time.strftime("%Y-%m-%d")
+        if _day["date"] != today:
+            _day.update(date=today, n=0)
+        h = _hits[ip]
+        while h and h[0] < now - 3600:
+            h.popleft()
+        if len(h) >= PER_IP_HOUR:
+            return f"You have asked {PER_IP_HOUR} questions in the last hour. Please try again a bit later."
+        if _day["n"] >= PER_DAY:
+            return "The demo has used up today's questions. Please come back tomorrow."
+        h.append(now)
+        _day["n"] += 1
+    return None
+
+
 @app.post("/api/ask")
-def ask(body: Ask):
+def ask(body: Ask, request: Request):
+    cached = agent.is_cached(body.question) and not body.fresh
+    why = None if cached or not agent.has_credentials() else _over_limit(request.client.host if request.client else "?")
+
     def gen():
+        if why:
+            yield json.dumps({"type": "error", "message": why}) + "\n"
+            yield json.dumps({"type": "done", "seconds": 0}) + "\n"
+            return
         try:
             for ev in agent.run(body.question, fresh=body.fresh):
                 yield json.dumps(ev, default=str) + "\n"
@@ -242,4 +274,4 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", "8765")), log_level="warning")
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8765")), log_level="warning")
