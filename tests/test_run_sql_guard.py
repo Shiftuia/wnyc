@@ -116,7 +116,7 @@ def test_query_length_capped():
 @pytest.mark.parametrize("sql", [
     "SELECT * FROM generate_series(1, 3)",
     "SELECT count(*) FROM range(10)",
-    "SELECT zone_name FROM zone_features JOIN zones USING (zone_id)",
+    "SELECT rent_zori, service_zone FROM zone_features JOIN zones USING (zone_id)",
     "WITH a AS (SELECT * FROM zones), b AS (SELECT * FROM a) SELECT count(*) FROM b",
     "FROM zone_features SELECT zone_name",
 ])

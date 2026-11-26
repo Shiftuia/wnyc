@@ -1,11 +1,15 @@
 .git
+.worktrees
 .venv
 data
 stable
 stable.prev
 .env
+.env.*
 fetch.log
 **/__pycache__
 *.pyc
+.pytest_cache
 .DS_Store
 docs
+research
