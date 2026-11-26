@@ -19,7 +19,13 @@ esac
 [ -f data/fhvhv_2026-09.parquet ] || bash scripts/fetch.sh
 [ -d data/extra ] || bash scripts/fetch_extra.sh
 [ -f data/basemap/style.json ] || $PY scripts/fetch_basemap.py || echo "bootstrap: some basemap files failed (tolerated, as in run.sh)"
-[ -f data/prepared.duckdb ] || $PY app/build_data.py
+# Build into a temp file and rename only on success: a failed build must not leave a partial database that the
+# next run would take as done.
+if [ ! -f data/prepared.duckdb ]; then
+  rm -f data/prepared.duckdb.tmp data/prepared.duckdb.tmp.wal
+  WNYC_BUILD_DB="$PWD/data/prepared.duckdb.tmp" $PY app/build_data.py
+  mv data/prepared.duckdb.tmp data/prepared.duckdb
+fi
 # the served container never writes here: route/geocode/answer caches live in the separate cache volume
 cd data
 find prepared.duckdb zones.geojson basemap -type f ! -name '*.part' -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256.tmp

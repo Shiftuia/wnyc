@@ -192,6 +192,24 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
+_HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?")
+
+
+def public_origin(request: Request) -> str:
+    """Origin the browser used, for absolute URLs in style.json. Behind TLS-terminating Cloudflare the app sees
+    plain http, so wnyc-ingress passes X-Forwarded-Proto (normalised to http|https) and X-Forwarded-Host (its
+    $host, the router-matched Host); trusted only like X-WNYC-Client. Anything malformed falls back to the
+    request itself, and the host is always validated (it is spliced into JSON)."""
+    proto, host = request.url.scheme, request.headers.get("host", "")
+    if TRUST_CLIENT_HEADER:
+        if request.headers.get("x-forwarded-proto") in ("http", "https"):
+            proto = request.headers["x-forwarded-proto"]
+        host = request.headers.get("x-forwarded-host") or host
+    if proto not in ("http", "https") or not _HOST_RE.fullmatch(host):
+        raise HTTPException(400, "bad host")
+    return f"{proto}://{host}"
+
+
 def _hit(kind: str, ip: str, per_hour: int) -> bool:
     """Record one request; False when this IP already made per_hour of them in the last hour."""
     now = time.time()
@@ -338,7 +356,7 @@ def basemap_style(request: Request):
     f = BASEMAP / "style.json"
     if not f.exists():
         raise HTTPException(404, "run scripts/fetch_basemap.py")
-    return Response(f.read_text().replace("{ORIGIN}", str(request.base_url).rstrip("/")), media_type="application/json",
+    return Response(f.read_text().replace("{ORIGIN}", public_origin(request)), media_type="application/json",
                     headers={"Cache-Control": "no-store"})
 
 

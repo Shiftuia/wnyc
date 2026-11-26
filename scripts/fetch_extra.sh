@@ -3,9 +3,11 @@
 set -uo pipefail
 mkdir -p data/extra && cd data/extra
 NYC=https://data.cityofnewyork.us/resource
+# Open-data portals answer transient 503s: retry those (curl retries 408/429/5xx and timeouts) with a pause.
+RETRY=(--retry 4 --retry-delay 15 --retry-connrefused)
 get() { # get <outfile> <base-url> [--data-urlencode args...]
   local out=$1 url=$2; shift 2
-  curl -fsS -m 240 -G "$url" "$@" -o "$out.part" && mv "$out.part" "$out" && echo "ok   $out $(wc -l < "$out") lines" || echo "FAIL $out"
+  curl -fsS -m 240 "${RETRY[@]}" -G "$url" "$@" -o "$out.part" && mv "$out.part" "$out" && echo "ok   $out $(wc -l < "$out") lines" || echo "FAIL $out"
 }
 get hpd_elevator.csv   $NYC/ygpa-z7cr.csv --data-urlencode '$select=bbl,latitude,longitude,count(distinct complaint_id) as n' --data-urlencode "\$where=major_category='ELEVATOR' AND received_date>='2025-11-01' AND latitude IS NOT NULL" --data-urlencode '$group=bbl,latitude,longitude' --data-urlencode '$limit=50000' &
 get lotteries.csv      $NYC/vy5i-a666.csv --data-urlencode '$select=lottery_id,lottery_name,lottery_status,lottery_start_date,lottery_end_date,unit_count,lottery_mobility_percent,postcode,latitude,longitude' --data-urlencode '$limit=5000' &
@@ -19,11 +21,11 @@ get health.csv         https://health.data.ny.gov/resource/vn5v-hh5r.csv --data-
 wait
 # reported felonies, year to date (opt-in display layer only — never scored)
 get felonies.csv       $NYC/5uac-w243.csv --data-urlencode '$select=latitude,longitude' --data-urlencode "\$where=law_cat_cd='FELONY' AND latitude>40" --data-urlencode '$limit=400000' &
-curl -fsS -m 240 -o gtfs_subway.zip https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip && echo "ok   gtfs_subway.zip $(wc -c < gtfs_subway.zip) bytes" || echo "FAIL gtfs_subway.zip"
+curl -fsS -m 240 "${RETRY[@]}" -o gtfs_subway.zip https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip && echo "ok   gtfs_subway.zip $(wc -c < gtfs_subway.zip) bytes" || echo "FAIL gtfs_subway.zip"
 wait
 ls -la
 # live elevator status + equipment list (keyless) and MTA capital projects that add accessibility
 MTA="https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2F"
-for f in nyct_ene nyct_ene_equipments; do curl -fsS -m 60 -o $f.json "$MTA$f.json" && echo "ok   $f.json" || echo "FAIL $f.json"; done
-curl -fsS -m 60 -G https://data.ny.gov/resource/9hy6-8j6t.json --data-urlencode "\$where=upper(title) like '%ADA%' OR upper(description) like '%ACCESSIB%'" --data-urlencode '$select=project_id,title,stage,description,estimated_actual_completion_date' -o capital_ada.json && echo "ok   capital_ada.json" || echo "FAIL capital_ada.json"
+for f in nyct_ene nyct_ene_equipments; do curl -fsS -m 60 "${RETRY[@]}" -o $f.json "$MTA$f.json" && echo "ok   $f.json" || echo "FAIL $f.json"; done
+curl -fsS -m 60 "${RETRY[@]}" -G https://data.ny.gov/resource/9hy6-8j6t.json --data-urlencode "\$where=upper(title) like '%ADA%' OR upper(description) like '%ACCESSIB%'" --data-urlencode '$select=project_id,title,stage,description,estimated_actual_completion_date' -o capital_ada.json && echo "ok   capital_ada.json" || echo "FAIL capital_ada.json"
 [ -d gtfs ] || (mkdir -p gtfs && unzip -o -q gtfs_subway.zip -d gtfs)

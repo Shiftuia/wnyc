@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-DB_PATH = DATA / "prepared.duckdb"
+# WNYC_BUILD_DB: build into another file (scripts/bootstrap.sh builds a temp file and renames it on success)
+DB_PATH = Path(os.environ.get("WNYC_BUILD_DB") or DATA / "prepared.duckdb").resolve()
 FT_800M = 800 / 0.3048  # EPSG:2263 is in US survey feet; 800 m ≈ 2,624.7 ft
 MIN_WAV_TRIPS = 30
 
@@ -384,7 +385,7 @@ def main() -> None:
                       ada_stations_800m AS ada_st, ada_elevator_uptime AS uptime, wav_wait_median_min AS wav_min, ramp_good_share AS ramps
                FROM zone_features WHERE zone_id IN (4, 25, 161, 168, 236) ORDER BY zone_id""").show()
     con.close()
-    print(f"built {DB_PATH.relative_to(ROOT)} in {time.time() - t0:.1f}s")
+    print(f"built {DB_PATH} in {time.time() - t0:.1f}s")
 
 
 if __name__ == "__main__":

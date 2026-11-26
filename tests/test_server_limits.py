@@ -138,3 +138,24 @@ def test_pages_have_no_inline_script_and_carry_tracker_and_support_link():
         link = re.search(r'<a class="support-link"[^>]*>', html).group(0)
         assert 'href="https://shiftuia.com/support"' in link and 'rel="noopener"' in link
         assert 'data-umami-event="support-click"' in link and 'data-umami-event-placement="wnyc-header"' in link
+
+
+@pytest.fixture
+def basemap(tmp_path, monkeypatch):
+    (tmp_path / "style.json").write_text('{"sprite": "{ORIGIN}/basemap/sprite", "glyphs": "{ORIGIN}/basemap/fonts"}')
+    monkeypatch.setattr(server, "BASEMAP", tmp_path)
+
+
+def test_style_origin_from_ingress_headers(basemap):
+    r = client.get("/basemap/style.json", headers={"Host": "wnyc.shiftuia.com", "X-Forwarded-Proto": "https",
+                                                     "X-Forwarded-Host": "wnyc.shiftuia.com"})
+    assert r.json()["sprite"] == "https://wnyc.shiftuia.com/basemap/sprite"   # no mixed content behind TLS
+
+
+def test_style_origin_rejects_injection(basemap, monkeypatch):
+    for h in ({"X-Forwarded-Host": 'evil.example","x":"'}, {"X-Forwarded-Host": "a/b"}, {"Host": "a b"}):
+        assert client.get("/basemap/style.json", headers=h).status_code == 400
+    assert client.get("/basemap/style.json", headers={"X-Forwarded-Proto": "javascript"}).json()["sprite"].startswith("http://")
+    monkeypatch.setattr(server, "TRUST_CLIENT_HEADER", False)   # untrusted peer: forwarded headers ignored
+    r = client.get("/basemap/style.json", headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "evil.example"})
+    assert r.json()["sprite"] == "http://testserver/basemap/sprite"
