@@ -61,7 +61,7 @@ Pages: `/` landing · `/map` the app.
 To put it on a server, see [DEPLOY.md](DEPLOY.md): an isolated Docker Compose stack (how wnyc.shiftuia.com runs:
 no route from the app to the host or LAN, allowlisted egress, read-only data) or plain systemd.
 
-Tests (security and limits, no downloads needed): `docker build --target test -t wnyc/test . && docker run --rm --network none wnyc/test`.
+Tests (security and limits, no downloads needed, run in a container with networking off): `scripts/test.sh`. It is also the repo pre-push hook (`.githooks/pre-push`).
 
 ## Data
 

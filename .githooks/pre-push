@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Repo pre-push hook (dispatched by the global hook): the full suite must pass before a push.
+exec "$(git rev-parse --show-toplevel)/scripts/test.sh"
