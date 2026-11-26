@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import ssl
 import threading
@@ -23,6 +24,8 @@ _SSL = ssl.create_default_context(cafile=certifi.where())  # python.org builds s
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 DB_PATH = DATA / "prepared.duckdb"
+# writable caches (answers, map PNGs, geocode/route lookups); the container mounts DATA read-only
+CACHE = Path(os.environ.get("WNYC_CACHE_DIR") or DATA / "cache")
 FT_800M = 800 / 0.3048
 WORKDAYS = 22     # commuting days a month, for the plan-B cost estimate
 MIN_UNITS = 1000  # zones with fewer multifamily units (parks, airports, industrial) are not ranked
@@ -74,12 +77,16 @@ def con() -> duckdb.DuckDBPyConnection:
         if _con is None:
             if not DB_PATH.exists():
                 raise RuntimeError("data/prepared.duckdb is missing — run: .venv/bin/python app/build_data.py")
-            _con = duckdb.connect(str(DB_PATH), read_only=True)
-            _con.execute("LOAD spatial")
+            c = duckdb.connect(str(DB_PATH), read_only=True)
+            c.execute("LOAD spatial")
             # the model writes its own SQL (run_sql) and the question comes from the public: no file or network
-            # access beyond the already-open database, and the setting cannot be switched back on
-            _con.execute("SET enable_external_access = false")
-            _con.execute("SET lock_configuration = true")
+            # access beyond the already-open database, bounded memory/threads, and none of it can be switched back
+            c.execute("SET enable_external_access = false")
+            c.execute("SET memory_limit = '512MB'")
+            c.execute("SET threads = 1")
+            c.execute("SET max_temp_directory_size = '0KiB'")
+            c.execute("SET lock_configuration = true")
+            _con = c
         return _con.cursor()
 
 
@@ -91,30 +98,130 @@ def q(sql: str, params: list | None = None) -> list[dict]:
 
 
 # --------------------------------------------------------------------- run_sql
+# Model-authored SQL is untrusted (the question comes from the public and can carry prompt injection).
+# Layers: one statement; SELECT/WITH/DESCRIBE/SUMMARIZE only; a keyword/function denylist on the text and on
+# DuckDB's own parse tree; every table it reads must be one of the prepared tables (or a CTE of the query);
+# table functions only range/generate_series/unnest; a read-only connection with external access off; a time
+# limit (the query is interrupted); and caps on rows, cell length and total result size.
 _FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|create|alter|attach|detach|copy|export|import|install|load|pragma|set|call|"
-    r"read_csv|read_parquet|read_json|read_text|read_blob|glob|st_read|httpfs)\b", re.I)
+    r"\b(insert|update|delete|drop|create|alter|attach|detach|copy|export|import|install|load|pragma|set|reset|"
+    r"call|checkpoint|vacuum|begin|commit|rollback|use|prepare|execute|"
+    r"getenv|current_setting|which_secret|glob|httpfs|sniff_csv|query|query_table|"
+    r"read_\w+|\w+_scan|parquet_\w+|st_read\w*|duckdb_\w+|pragma_\w+|sqlite_\w+|postgres_\w+|mysql_\w+|"
+    r"iceberg_\w+|delta_\w+|json_execute_serialized_sql|from_json_serialized_sql|"
+    r"information_schema|pg_catalog|pg_\w+|sqlite_master|sqlite_schema|temp|system)\b", re.I)
+# string literals that look like paths or URLs are refused too (a replacement scan turns 'x.csv' into a file read)
+_PATHLIKE = re.compile(r"'[^']*(?:/|\\|\.(?:csv|tsv|parquet|json|ndjson|txt|db|duckdb|sqlite|gz|zst)\b|://)[^']*'", re.I)
+SQL_TIMEOUT_S = float(os.environ.get("WNYC_SQL_TIMEOUT_S", "5"))
+MAX_CELL_CHARS = 300
+MAX_RESULT_CHARS = 20000
+
+
+@lru_cache(maxsize=1)
+def allowed_tables() -> frozenset[str]:
+    """The prepared tables and views in the main schema: the only relations model SQL may read."""
+    return frozenset(r["n"].lower() for r in q(
+        "SELECT table_name AS n FROM information_schema.tables WHERE table_schema = 'main'"))
+
+
+def _check_sql(s: str) -> str | None:
+    if ";" in s:
+        return "one statement at a time"
+    if len(s) > 4000:
+        return "query too long (4,000 characters at most)"
+    if not re.match(r"^\s*(select|with|describe|summarize|from)\b", s, re.I):
+        return "only SELECT / WITH / DESCRIBE / SUMMARIZE are allowed"
+    if _FORBIDDEN.search(s):
+        return "statement uses a keyword or function that is not allowed (prepared tables only)"
+    if _PATHLIKE.search(s):
+        return "string literals that look like file paths or URLs are not allowed (prepared tables only)"
+    try:
+        tree = json.loads(_parser().execute("SELECT json_serialize_sql(?)", [s]).fetchone()[0])
+    except Exception as e:
+        return f"could not parse the query: {type(e).__name__}"
+    if tree.get("error"):
+        return f"could not parse the query: {tree.get('error_message', '')[:200]}"
+    ctes: set[str] = set()
+    refs: list[dict] = []
+    _walk(tree, ctes, refs)
+    for r in refs:
+        if r["type"] == "BASE_TABLE":
+            name = (r.get("table_name") or "").lower()
+            if (r.get("schema_name") or "") not in ("", "main") or (name not in allowed_tables() and name not in ctes):
+                return f"unknown or disallowed table: {name[:80]}"
+        elif r["type"] == "TABLE_FUNCTION":
+            fn = ((r.get("function") or {}).get("function_name") or "").lower()
+            if fn not in _ALLOWED_TABLE_FUNCTIONS:
+                return f"table function not allowed: {fn[:80]}"
+        elif _FORBIDDEN.fullmatch(r["function_name"] or ""):
+            return f"function not allowed: {r['function_name'][:80]}"
+    return None
+
+
+_ALLOWED_TABLE_FUNCTIONS = {"range", "generate_series", "unnest"}
+_parser_local = threading.local()
+
+
+def _parser() -> duckdb.DuckDBPyConnection:
+    """A private in-memory connection used only to parse (json_serialize_sql never executes anything)."""
+    if not hasattr(_parser_local, "con"):
+        _parser_local.con = duckdb.connect(":memory:")
+    return _parser_local.con
+
+
+def _walk(node, ctes: set[str], refs: list[dict]) -> None:
+    """Collect table references, table functions and scalar functions from DuckDB's own parse tree."""
+    if isinstance(node, dict):
+        if node.get("type") in ("BASE_TABLE", "TABLE_FUNCTION"):
+            refs.append(node)
+        if node.get("class") == "FUNCTION":
+            refs.append({"type": "FUNCTION", "function_name": str(node.get("function_name", "")).lower()})
+        for m in (node.get("cte_map") or {}).get("map") or []:
+            ctes.add(str(m.get("key", "")).lower())
+        for v in node.values():
+            _walk(v, ctes, refs)
+    elif isinstance(node, list):
+        for v in node:
+            _walk(v, ctes, refs)
+
+
+def _cell(v):
+    if isinstance(v, (int, float, bool, type(None))):
+        return v
+    v = str(v)
+    return v if len(v) <= MAX_CELL_CHARS else v[:MAX_CELL_CHARS] + "…"
 
 
 def run_sql(sql: str, max_rows: int = 50) -> dict:
     """Read-only SELECT over the prepared tables. Returns at most max_rows rows."""
-    s = sql.strip().rstrip(";")
-    if ";" in s:
-        return {"error": "one statement at a time"}
-    if not re.match(r"^\s*(select|with|describe|show|summarize)\b", s, re.I):
-        return {"error": "only SELECT / WITH / DESCRIBE / SHOW / SUMMARIZE are allowed"}
-    if _FORBIDDEN.search(s):
-        return {"error": "statement uses a keyword or file function that is not allowed (prepared tables only)"}
+    s = (sql or "").strip().rstrip(";").strip()
+    err = _check_sql(s)
+    if err:
+        return {"error": err}
+    cur = con()
+    timer = threading.Timer(SQL_TIMEOUT_S, cur.interrupt)
+    timer.start()
     try:
-        cur = con()
         cur.execute(s)
         cols = [d[0] for d in cur.description]
         rows = cur.fetchmany(max_rows + 1)
     except Exception as e:  # surfaced to the model so it can fix its query
+        if not timer.is_alive():
+            return {"error": f"query stopped after {SQL_TIMEOUT_S:g} s: aggregate or filter more"}
         return {"error": f"{type(e).__name__}: {e}"[:600]}
+    finally:
+        timer.cancel()
+        cur.close()
     truncated = len(rows) > max_rows
-    out = [[(v if isinstance(v, (int, float, str, bool, type(None))) else str(v)) for v in r] for r in rows[:max_rows]]
-    return {"columns": cols, "rows": out, "row_count": len(out), "truncated": truncated}
+    out, size = [], 0
+    for r in rows[:max_rows]:
+        row = [_cell(v) for v in r]
+        size += len(json.dumps(row, default=str))
+        if size > MAX_RESULT_CHARS:
+            truncated = True
+            break
+        out.append(row)
+    return {"columns": [_cell(c) for c in cols], "rows": out, "row_count": len(out), "truncated": truncated}
 
 
 SCHEMA_DOC = """Prepared DuckDB tables (read-only):
@@ -156,7 +263,8 @@ SCHEMA_DOC = """Prepared DuckDB tables (read-only):
 
 
 # -------------------------------------------------------------------- geocode
-_geo_cache_path = DATA / "geocode_cache.json"
+_geo_cache_path = CACHE / "geocode_cache.json"
+GEO_CACHE_MAX = 5000
 _geo_lock = threading.Lock()
 _last_nominatim = 0.0
 
@@ -220,6 +328,9 @@ def geocode(address: str) -> dict:
                         result = {"lat": float(hits[0]["lat"]), "lon": float(hits[0]["lon"]),
                                   "display_name": hits[0]["display_name"], "source": "Nominatim (OpenStreetMap)"}
                         cache[key] = result
+                        while len(cache) > GEO_CACHE_MAX:  # bounded: lookups come from the public
+                            cache.pop(next(iter(cache)))
+                        _geo_cache_path.parent.mkdir(parents=True, exist_ok=True)
                         _geo_cache_path.write_text(json.dumps(cache, indent=1))
                 except Exception as e:
                     result = None

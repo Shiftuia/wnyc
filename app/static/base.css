@@ -35,3 +35,6 @@ b, strong { font-weight: 800; }
 .rt { display: inline-grid; place-items: center; min-width: 1.55em; height: 1.55em; padding: 0 .2em; border-radius: 999px; font-weight: 800; font-size: .8em; color: #fff; vertical-align: middle; margin-right: 2px; border: 1.5px solid #14110f; }
 .nodata { color: var(--ink-2); font-style: italic; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+/* Support link: small and quiet, but in the header so it is visible without scrolling */
+.support-link { font-weight: 700; font-size: .92rem; color: var(--ink-2, var(--ink)); text-decoration: underline; text-underline-offset: 3px; padding: 10px 4px; white-space: nowrap; }
+.support-link:hover, .support-link:focus-visible { color: var(--ink); }

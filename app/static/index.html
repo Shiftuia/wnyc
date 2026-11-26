@@ -7,11 +7,12 @@
 <title>Wheelchair NYC — same rent, different city</title>
 <meta name="description" content="A map that shows a wheelchair user where in New York City they could really live: rent, accessible subway stations, how often the elevators work, and how to get to work.">
 <link rel="stylesheet" href="/static/base.css">
+<script defer src="https://metrics.shiftuia.com/hs.js" data-website-id="09771a91-3c14-401d-b45e-8b874dd8880f" data-domains="wnyc.shiftuia.com" data-exclude-search="true" data-exclude-hash="true"></script>
 <style>
   body { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
   header, main, footer { width: 100%; max-width: 1240px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 44px); }
   header { display: flex; justify-content: space-between; align-items: center; padding-block: 14px; gap: 12px; flex-wrap: wrap; }
-  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 64px); align-items: center; padding-block: clamp(16px, 4vh, 48px); }
   h1 { font-size: clamp(3rem, 8vw, 6.6rem); line-height: .9; font-weight: 800; letter-spacing: -.04em; }
   h1 em { font-style: normal; background: linear-gradient(transparent 56%, var(--sun) 56% 92%, transparent 92%); }
@@ -42,7 +43,7 @@
 <a class="skip" href="#open">Skip to the map</a>
 <header>
   <a class="brand" href="/"><span>Wheelchair <b>NYC</b></span></a>
-  <nav aria-label="Pages"><a class="pill-btn" href="/map">Map</a></nav>
+  <nav aria-label="Pages"><a class="support-link" href="https://shiftuia.com/support" target="_blank" rel="noopener" data-umami-event="support-click" data-umami-event-placement="wnyc-header">Support<span class="vh"> this project (opens in a new tab)</span></a><a class="pill-btn" href="/map">Map</a></nav>
 </header>
 <main>
   <div>
@@ -61,23 +62,6 @@
   </ol>
 </main>
 <footer>Built on open data from NYC, the MTA, the TLC, Zillow and the CDC. Figures are proxies, not guarantees — details inside.</footer>
-<script>
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = n => "$" + Math.round(n).toLocaleString("en-US");
-const prefs = JSON.parse(localStorage.getItem("wnyc-prefs") || "{}");
-if (prefs.theme === "ink") document.documentElement.dataset.theme = "ink";
-fetch("/api/landing").then(r => r.json()).then(L => {
-  const c = L.city, w = L.waits, p = L.pair;
-  document.getElementById("lede").innerHTML = `An apartment listing shows the price. It does not show whether you can get out of the neighbourhood. For the <b>${L.ambulatory.n.toLocaleString("en-US")} New Yorkers</b> who have serious difficulty walking or climbing stairs, that is the whole question. This map answers it.`;
-  document.getElementById("stats").innerHTML = [
-    [`1 in ${Math.round(c.stations / c.ada_full)}`, `subway stations is fully accessible (${c.ada_full} of ${c.stations})`],
-    [`${Math.round(c.worst_uptime * 100)}%`, `of the time the elevators at ${c.worst_station} worked, Apr–Oct 2026`],
-    [`+${Math.round((w.wav_wait_median_min / w.other_wait_median_min - 1) * 100)}%`, `longer wait for a wheelchair-accessible Uber or Lyft`],
-  ].map(([n, t]) => `<li><b>${esc(n)}</b><span>${esc(t)}</span></li>`).join("");
-  if (p) document.getElementById("pair").innerHTML = `<h2>Two neighbourhoods in ${p.borough === "Bronx" ? "the Bronx" : esc(p.borough)}. On a listings site they look the same.</h2>
-    <article class="listing"><h3>${esc(p.a_name)} <span>${money(p.a_rent)}</span></h3><p>${p.a_n} accessible subway stations in reach. Their elevators worked ${(100 * p.a_uptime).toFixed(0)}% of the time.</p><p class="verdict">On the map</p></article>
-    <article class="listing bad"><h3>${esc(p.b_name)} <span>${money(p.b_rent)}</span></h3><p>No accessible subway station. An accessible Uber takes ${p.b_wav.toFixed(0)} minutes to arrive — 1 time in 10, over ${p.b_wav_p90.toFixed(0)}.</p><p class="verdict">Off the map</p></article>`;
-});
-</script>
+<script src="/static/landing.js" defer></script>
 </body>
 </html>

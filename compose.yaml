@@ -1,38 +1,155 @@
-# docker compose up -d --build     → https://$DOMAIN  (first start builds the data: watch `docker compose logs -f app`)
-# Needs a .env next to this file with ANTHROPIC_API_KEY=... and DOMAIN=your.domain (see DEPLOY.md).
+# Wheelchair NYC: isolated public deployment (wnyc.shiftuia.com on the ThinkCentre; see DEPLOY.md).
+#
+#   Cloudflare tunnel -> traefik (proxy net) -> wnyc-ingress (nginx) -> wnyc (app) -> wnyc-egress (squid) -> internet
+#
+# * wnyc (the app) is attached ONLY to wnyc-internal: internal (no route out) and no bridge IP on the host
+#   (inhibit_ipv4), so it cannot reach the host, the LAN, other containers' networks or 169.254.169.254.
+#   Its only peers are the ingress sidecar and the egress proxy. No published ports.
+# * wnyc-ingress is the only container on Traefik's `proxy` network; it forwards to the app and nowhere else.
+# * wnyc-egress (squid) allows HTTPS to api.anthropic.com, nominatim.openstreetmap.org and
+#   routing.openstreetmap.de only, and never to a private/link-local/loopback address.
+# * Data (datasets + DuckDB) lives in the wnyc-data volume, written only by the one-shot `bootstrap`
+#   service and mounted read-only into the app. Answer/geocode/route caches go to wnyc-cache.
+#
+#   docker compose --profile bootstrap run --rm bootstrap      # once: download + build the data (~10 min)
+#   GIT_REVISION=$(git rev-parse HEAD) docker compose up -d --build
+#
+# Public exposure is off until WNYC_PUBLIC=true is set in .env (Traefik ignores the router otherwise).
+name: wnyc
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
 services:
-  app:
-    build: .
-    restart: unless-stopped
+  wnyc:
+    <<: *hardening
+    build:
+      context: .
+      target: app
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unset}
+    image: wnyc/app:latest
+    container_name: wnyc
+    user: "1000:1000"
+    env_file:
+      - path: ./.env          # ANTHROPIC_API_KEY only; mode 600, gitignored (see .env.example)
+        required: false
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       WNYC_MODEL: ${WNYC_MODEL:-claude-haiku-5-5}
       WNYC_EFFORT: ${WNYC_EFFORT:-medium}
       WNYC_ASK_PER_IP_HOUR: ${WNYC_ASK_PER_IP_HOUR:-20}
       WNYC_ASK_PER_DAY: ${WNYC_ASK_PER_DAY:-2000}
-      # the app port is not published: only caddy can reach it, so trust its X-Forwarded-For for rate limits
-      FORWARDED_ALLOW_IPS: "*"
+      WNYC_ASK_CONCURRENCY: ${WNYC_ASK_CONCURRENCY:-2}
+      WNYC_CACHE_DIR: /cache
+      WNYC_BASEMAP_UPSTREAM: "0"        # street map is served from the bootstrapped files only (no tile fetches)
+      WNYC_TRUST_CLIENT_HEADER: "1"     # X-WNYC-Client is set by wnyc-ingress, the app's only HTTP peer
+      HTTPS_PROXY: http://wnyc-egress:3128
+      HTTP_PROXY: http://wnyc-egress:3128
+      NO_PROXY: 127.0.0.1,localhost
+    volumes:
+      - wnyc-data:/app/data:ro
+      - wnyc-cache:/cache
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    networks: [wnyc-internal]
+    depends_on: [wnyc-egress]
+    cpus: 1.0
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 128
+    ulimits:
+      nofile: { soft: 4096, hard: 4096 }
+
+  wnyc-ingress:
+    <<: *hardening
+    build: ./deploy/ingress
+    image: wnyc/ingress:latest
+    container_name: wnyc-ingress
+    user: "101:101"
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [wnyc-internal, proxy]
+    depends_on: [wnyc]
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 32
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "traefik.enable=${WNYC_PUBLIC:-false}"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.wnyc.rule=Host(`wnyc.shiftuia.com`)"
+      - "traefik.http.routers.wnyc.entrypoints=web"
+      - "traefik.http.services.wnyc.loadbalancer.server.port=8080"
+      - "traefik.http.services.wnyc.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.wnyc.loadbalancer.healthcheck.interval=30s"
+
+  wnyc-egress:
+    <<: *hardening
+    build: ./deploy/egress
+    image: wnyc/egress:latest
+    container_name: wnyc-egress
+    tmpfs:
+      - /tmp:size=16m,uid=13,gid=13,mode=0700
+      - /var/spool/squid:size=8m,uid=13,gid=13,mode=0700
+      - /var/run:size=1m,uid=13,gid=13,mode=0700
+    networks: [wnyc-internal, wnyc-out]
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 64
+
+  # One-shot data bootstrap (profile, never started by `up`): trusted repo scripts only, no visitor input.
+  bootstrap:
+    build:
+      context: .
+      target: app
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unset}
+    image: wnyc/app:latest
+    profiles: [bootstrap]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: ["bash", "scripts/bootstrap.sh"]
+    command: ["build"]
     volumes:
       - wnyc-data:/app/data
-    expose:
-      - "8765"
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on: [app]
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
     environment:
-      DOMAIN: ${DOMAIN:-localhost}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      HOME: /home/wnyc
+    networks: [wnyc-bootstrap]
+    cpus: 1.0
+    mem_limit: 3g
 
 volumes:
   wnyc-data:
-  caddy-data:
-  caddy-config:
+    name: wnyc-data
+  wnyc-cache:
+    name: wnyc-cache
+
+networks:
+  wnyc-internal:
+    name: wnyc-internal
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+  wnyc-out:
+    name: wnyc-out
+    driver: bridge
+  wnyc-bootstrap:
+    name: wnyc-bootstrap
+    driver: bridge
+  proxy:
+    external: true

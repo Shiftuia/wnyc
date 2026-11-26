@@ -4,6 +4,7 @@ body { overflow: hidden; }
 .app { display: grid; grid-template-columns: minmax(340px, 440px) 1fr; height: 100vh; height: 100dvh; }
 .panel { display: flex; flex-direction: column; min-height: 0; background: var(--paper); border-right: var(--bw) solid var(--rule); z-index: 2; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; gap: 8px; }
+.panel-head .support-link { margin-left: auto; }
 .pill-btn.sm { min-height: 40px; min-width: 44px; padding: 4px 12px; justify-content: center; }
 .prefs { display: flex; gap: 6px; }
 

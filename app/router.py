@@ -97,7 +97,7 @@ def _track(net, route_id: str, stops: list[tuple]) -> list[list[float]] | None:
     return [[p[0], p[1]] for p in best[1]] if best else None
 
 
-_road_cache_path = engine.DATA / "route_cache.json"
+_road_cache_path = engine.CACHE / "route_cache.json"
 _road_lock = threading.Lock()
 _road_cache: dict | None = None
 
@@ -129,6 +129,7 @@ def _road(a: list, b: list, profile: str) -> list[list[float]] | None:
         if len(_road_cache) > 400:
             for k in list(_road_cache)[:100]:
                 del _road_cache[k]
+        _road_cache_path.parent.mkdir(parents=True, exist_ok=True)
         _road_cache_path.write_text(json.dumps(_road_cache))
     return path
 
